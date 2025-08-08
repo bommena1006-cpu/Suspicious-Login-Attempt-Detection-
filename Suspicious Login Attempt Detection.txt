@@ -1,0 +1,288 @@
+# Suspicious Login Attempt Detection Project (1)
+
+## Project Overview
+
+This project focuses on setting up a lab environment to detect and analyze suspicious login attempts using Splunk SIEM. The lab will consist of Windows and Kali Linux machines configured to generate, collect, and analyze authentication logs.
+
+## Lab Setup Requirements
+
+### Hardware Requirements
+
+- Computer with at least 8GB RAM (16GB recommended)
+- At least 50GB free disk space
+- Processor with virtualization support
+
+### Software Requirements
+
+- Virtualization platform (VMware Workstation/Player or VirtualBox)
+- Windows 10/11 ISO
+- Kali Linux ISO
+- Splunk Enterprise (free trial version)
+- Splunk Universal Forwarder
+
+## Network Architecture
+
+```mermaid
+graph TD;
+    A["Internet"] --> B["Router/Firewall"];
+    B --> C["Lab Network (192.168.1.0/24)"];
+    C --> D["Windows Client (192.168.1.10)"];
+    C --> E["Windows Server (192.168.1.20)"];
+    C --> F["Kali Linux (192.168.1.30)"];
+    C --> G["Splunk Server (192.168.1.40)"];
+    D --> G;
+    E --> G;
+    F --> G;
+
+```
+
+## Step 1: Setting Up Virtual Machines
+
+- Windows Setup
+    
+    1. Create a new virtual machine in your virtualization platform
+    
+    2. Allocate 4GB RAM and 2 CPU cores
+    
+    3. Create a 50GB virtual hard disk
+    
+    4. Mount the Windows ISO and install Windows
+    
+    5. Configure networking to be on the same virtual network as other machines
+    
+    6. Enable Remote Desktop for easy access
+    
+    7. Configure Windows to use a static IP (192.168.1.10 or 192.168.1.20)
+    
+- Kali Linux Setup
+    
+    1. Create a new virtual machine in your virtualization platform
+    
+    2. Allocate 4GB RAM and 2 CPU cores
+    
+    3. Create a 30GB virtual hard disk
+    
+    4. Mount the Kali Linux ISO and install Kali Linux
+    
+    5. Configure networking to be on the same virtual network as other machines
+    
+    6. Set a static IP address (192.168.1.30)
+    
+- Splunk Server Setup
+    
+    1. Create a new virtual machine with Windows or Linux (Windows recommended for beginners)
+    
+    2. Allocate 8GB RAM and 4 CPU cores
+    
+    3. Create a 100GB virtual hard disk
+    
+    4. Install the operating system
+    
+    5. Download and install Splunk Enterprise
+    
+    6. Configure with static IP (192.168.1.40)
+    
+    7. Create Splunk admin account during installation
+    
+    8. Configure Splunk to start automatically
+    
+
+## Step 2: Configuring Log Collection
+
+- Windows Log Configuration
+    
+    1. Open Event Viewer (eventvwr.msc)
+    
+    2. Navigate to Windows Logs > Security
+    
+    3. Right-click Security and select "Properties"
+    
+    4. Set the maximum log size to at least 1GB
+    
+    5. Select "Do not overwrite events (clear logs manually)"
+    
+    6. Enable auditing for logon events:
+    
+    - Open Local Security Policy (secpol.msc)
+    - Navigate to Security Settings > Local Policies > Audit Policy
+    - Double-click "Audit logon events"
+    - Check "Success" and "Failure" boxes
+    - Click Apply and OK
+- Install Splunk Universal Forwarder on Windows
+    
+    1. Download Splunk Universal Forwarder for Windows
+    
+    2. Run the installer
+    
+    3. Enter the Splunk server IP (192.168.1.40) and management port (8089)
+    
+    4. Configure to collect Windows Event Logs
+    
+    5. Start the Splunk Universal Forwarder service
+    
+- Configure Splunk Server to Receive Logs
+    
+    1. Log into Splunk Web interface (http://192.168.1.40:8000)
+    
+    2. Navigate to Settings > Forwarding and receiving
+    
+    3. Under "Receive data", click "Configure receiving"
+    
+    4. Click "New Receiving Port" and set it to 9997
+    
+    5. Create indexes for the project:
+    
+    - Navigate to Settings > Indexes
+    - Click "New Index" and create "windows_security"
+    - Set appropriate size and retention settings
+
+## Step 3: Simulating Suspicious Login Attempts
+
+- Using Kali Linux for Login Attempts
+    
+    1. Install required tools:
+    
+    ```bash
+    sudo apt update
+    sudo apt install hydra nmap
+    ```
+    
+    2. Basic port scan to identify potential targets:
+    
+    ```bash
+    nmap -p 3389,22,445 192.168.1.0/24
+    ```
+    
+    3. Attempt brute force on Windows RDP:
+    
+    ```bash
+    hydra -l Administrator -P /usr/share/wordlists/rockyou.txt 192.168.1.10 rdp
+    ```
+    
+    4. Attempt brute force on SMB:
+    
+    ```bash
+    hydra -l Administrator -P /usr/share/wordlists/rockyou.txt 192.168.1.10 smb
+    ```
+    
+- Simulating Failed Login Attempts on Windows
+    
+    1. Manually attempt to log in with incorrect credentials
+    
+    2. Use Windows command line to attempt login:
+    
+    ```
+    net use \\192.168.1.20\c$ /user:Administrator wrongpassword
+    ```
+    
+    3. Lock account by repeatedly attempting incorrect logins
+    
+
+## Step 4: Creating Splunk Dashboards for Detection
+
+- Basic Searches in Splunk
+    
+    1. Failed Windows logins:
+    
+    ```
+    index=windows_security EventCode=4625
+    | table _time User Computer Action Reason
+    ```
+    
+    2. Successful logins after failures:
+    
+    ```
+    index=windows_security (EventCode=4625 OR EventCode=4624)
+    | transaction User maxspan=5m
+    | where mvcount(EventCode) > 3 AND mvlast(EventCode)=4624
+    | table _time User Computer Action
+    ```
+    
+    3. Login attempts from unusual source IPs:
+    
+    ```
+    index=windows_security EventCode=4625
+    | stats count by src_ip
+    | where count > 5
+    ```
+    
+- Creating an Authentication Monitoring Dashboard
+    
+    1. In Splunk, go to "Dashboards" and click "Create New Dashboard"
+    
+    2. Name it "Authentication Monitoring Dashboard"
+    
+    3. Add panels:
+    
+    - Failed login attempts over time (line chart)
+    - Top users with failed logins (bar chart)
+    - Top source IPs for failed logins (table)
+    - Successful vs. failed login ratio (pie chart)
+    - Geographic map of login attempts (if external IPs available)
+
+## Step 5: Setting Up Alerts
+
+- Creating Alert for Brute Force Attempts
+    
+    1. In Splunk, go to "Searches & Reports"
+    
+    2. Create a new search:
+    
+    ```
+    index=windows_security EventCode=4625
+    | stats count by src_ip, User, Computer
+    | where count > 5
+    ```
+    
+    3. Click "Save As" and select "Alert"
+    
+    4. Configure alert settings:
+    
+    - Title: "Potential Brute Force Attack"
+    - Trigger: When count > 5 in a 5-minute period
+    - Actions: Email notification
+- Creating Alert for Successful Login After Multiple Failures
+    
+    1. Create a new search:
+    
+    ```
+    index=windows_security (EventCode=4625 OR EventCode=4624)
+    | transaction User maxspan=5m
+    | where mvcount(EventCode) > 3 AND mvlast(EventCode)=4624
+    ```
+    
+    2. Save as alert "Successful Login After Multiple Failures"
+    
+    3. Configure to run every 5 minutes
+    
+    4. Set actions (email, script, etc.)
+    
+
+## Step 6: Documentation and Analysis
+
+### Create an Incident Response Plan
+
+- Define severity levels for different types of suspicious logins
+- Document step-by-step response procedures
+- Create escalation paths and contact information
+- Outline containment and recovery procedures
+
+### Document Findings
+
+- Create templates for security incidents
+- Document all observed attack patterns
+- Create a knowledge base of common attack signatures
+
+## Project Extensions
+
+- Integrate with Active Directory for user account monitoring
+- Add network traffic monitoring using Security Onion or Zeek
+- Implement automated response actions using Splunk Enterprise Security
+- Create correlation rules to detect advanced persistent threats
+- Add honeypot systems to detect and analyze attack techniques
+
+## Resources
+
+- Splunk Documentation: [https://docs.splunk.com/](https://docs.splunk.com/)
+- Windows Event Log Reference: [https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625)
+- Kali Linux Tools Documentation: [https://www.kali.org/tools/](https://www.kali.org/tools/)
