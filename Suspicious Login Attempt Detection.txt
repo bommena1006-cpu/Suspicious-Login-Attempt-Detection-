@@ -1,4 +1,4 @@
-# Suspicious Login Attempt Detection Project (1)
+# Suspicious Login Attempt Detection
 
 ## Project Overview
 
